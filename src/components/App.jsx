@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import Searchbar from './Searchbar/Searchbar';
 import ImageGallery from './ImageGallery/ImageGallery';
@@ -9,127 +9,116 @@ import Button from './Button/Button';
 import { fetchImages } from 'services/api';
 import css from './App.module.css';
 
-export class App extends Component {
-  state = {
-    searchQuery: '',
-    images: [],
-    totalHits: null,
-    page: 1,
-    selectedImage: null,
-    isLoading: false,
-    error: null,
-    modal: { isOpen: false, visibleData: null },
-  };
+export const App = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [images, setImages] = useState([]);
+  const [totalHits, setTotalHits] = useState(0);
+  const [page, setPage] = useState(1);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [modalIsOpen, setModalIsOpen] = useState(false);
+  const [modalVisibleData, setModalVisibleData] = useState(null);
 
-  onSubmitForm = e => {
+  const onSubmitForm = e => {
     e.preventDefault();
 
-    this.setState(state => ({ page: 1 }));
+    setPage(1);
     const inputValue = e.target.elements[1].value;
 
     if (inputValue === '') {
-      this.setState(state => ({ images: [], searchQuery: "" }));
+      setImages([]);
+      setSearchQuery('');
       return alert('Please enter what images do you want to find?');
     }
 
-    this.setState(state => ({ searchQuery: inputValue }));
+    setSearchQuery(inputValue);
     e.target.elements[1].value = '';
   };
 
-  onLoadMoreBtnClick = () => {
-    this.setState(state => ({ page: state.page + 1 }));
+  const onLoadMoreBtnClick = () => {
+    setPage(prevValue => prevValue + 1);
   };
 
-  onSelectImage = imageId => {
-    this.setState(state => ({ selectedImage: imageId }));
+  const onSelectImage = imageId => {
+    setSelectedImage(imageId);
   };
 
-  onOpenModal = data => {
-    this.setState(state => ({
-      modal: { isOpen: true, visibleData: data },
-    }));
+  const onOpenModal = data => {
+    setModalIsOpen(true);
+    setModalVisibleData(data);
   };
 
-  onCloseModal = () => {
-    this.setState(state => ({ modal: { isOpen: false, visibleData: null }, selectedImage: null }));
+  const onCloseModal = () => {
+    setModalIsOpen(false);
+    setModalVisibleData(null);
+    setSelectedImage(null);
   };
 
-  async componentDidUpdate(prevProps, prevState) {
-    if (
-      prevState.searchQuery !== this.state.searchQuery ||
-      prevState.page !== this.state.page
-    ) {
-      if (this.state.searchQuery === "") { 
-        return;
+  const fetchData = async (searchQuery, page) => {
+    try {
+      setIsLoading(true);
+
+      const { hits, totalHits } = await fetchImages(searchQuery, page);
+
+      if (page === 1) {
+        setImages([...hits]);
+        setTotalHits(totalHits);
+      } else {
+        setImages(prevImages => [...prevImages, ...hits]);
+        setTotalHits(totalHits);
       }
-      try {
-        this.setState(state => ({ isLoading: true }));
-        const { hits, totalHits } = await fetchImages(
-          this.state.searchQuery,
-          this.state.page
+
+      if (hits.length === 0) {
+        alert(
+          "Oops! We didn't find any image on this query. Please try another one..."
         );
-
-        if (this.state.page === 1) {
-          this.setState(state => ({ images: [...hits], totalHits }));
-        } else {
-          this.setState(state => ({
-            images: [...state.images, ...hits],
-            totalHits,
-          }));
-        }
-
-        if (hits.length === 0) {
-          alert(
-            "Oops! We didn't find any image on this query. Please try another one..."
-            );
-            this.setState(state => ({ searchQuery: "" }));
-        }
-      } catch (error) {
-        this.setState(state => ({ error: error.message }));
-      } finally {
-        this.setState(state => ({ isLoading: false }));
+        setSearchQuery('');
       }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (searchQuery === '') {
+      return;
     }
 
-    if (prevState.selectedImage !== this.state.selectedImage) {
-      if (this.state.selectedImage === null) { 
-        return;
-      }
-      const largeImage = this.state.images.find(
-        el => el.id === this.state.selectedImage
-      );
-      this.onOpenModal(largeImage);
-    }
-  }
+    setError(null);
 
-  render() {
-    return (
-      <div className={css.App}>
-        <Searchbar onSubmitForm={this.onSubmitForm} />
-        {this.state.isLoading && this.state.images.length <= 0 && <Loader />}
-        {this.state.error !== null && (
-          <p>
-            Something wrong. The error is: {this.state.error}. Please try again
-            later.
-          </p>
-        )}
-        {this.state.images.length > 0 && (
-          <ImageGallery
-            images={this.state.images}
-            selectImg={this.onSelectImage}
-          />
-        )}
-        {this.state.isLoading && this.state.images.length > 0 && <Loader />}
-        {this.state.images.length > 0 && this.state.page < Math.ceil(this.state.totalHits / 12) && (
-          <Button onBtnClick={this.onLoadMoreBtnClick} />
-        )}
-        {this.state.modal.isOpen && (
-          <Modal
-            modalData={this.state.modal.visibleData}
-            onCloseModal={this.onCloseModal}
-          />
-        )}
-      </div>
-    );
-  }
-}
+    fetchData(searchQuery, page);
+  }, [searchQuery, page]);
+
+  useEffect(() => {
+    if (selectedImage === null) {
+      return;
+    }
+
+    const largeImage = images.find(el => el.id === selectedImage);
+
+    onOpenModal(largeImage);
+  }, [images, selectedImage]);
+
+  return (
+    <div className={css.App}>
+      <Searchbar onSubmitForm={onSubmitForm} />
+      {isLoading && images.length <= 0 && <Loader />}
+      {error !== null && (
+        <p>Something wrong. The error is: {error}. Please try again later.</p>
+      )}
+      {images.length > 0 && (
+        <ImageGallery images={images} selectImg={onSelectImage} />
+      )}
+      {isLoading && images.length > 0 && <Loader />}
+      {images.length > 0 && page < Math.ceil(totalHits / 12) && (
+        <Button onBtnClick={onLoadMoreBtnClick} />
+      )}
+      {modalIsOpen && (
+        <Modal modalData={modalVisibleData} onCloseModal={onCloseModal} />
+      )}
+    </div>
+  );
+};
